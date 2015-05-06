@@ -20,6 +20,17 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     this.remoteRepository = remoteRepository;
     remoteRepository.synchronizer = this;
     if (options.filter) this.setFilter(options.filter);
+
+    localRepository.onAsync('willDestroy', function *() {
+      yield this.suspend();
+    }.bind(this));
+
+    localRepository.onAsync('didDestroy', function *() {
+      this.hasBeenInitialized = false;
+      delete this._remoteRepositoryId;
+      delete this._remoteHistoryLastSequenceNumber;
+      yield this.resume();
+    }.bind(this));
   });
 
   this.getFilter = function() {
@@ -108,6 +119,7 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
   };
 
   this.stop = function() {
+    if (!this._isStarted) return;
     if (this._isStopping) return;
     this._isStopping = true;
     if (this._timeout) this._timeout.stop();
@@ -120,6 +132,17 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     }
   };
 
+  this.suspend = function *() {
+    this._isSuspended = true;
+    while (this._isRunning) {
+      yield wait(100);
+    }
+  };
+
+  this.resume = function *() {
+    this._isSuspended = false;
+  };
+
   this.getIsStarted = function() {
     return this._isStarted;
   };
@@ -130,6 +153,7 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
 
   this.run = function *() {
     if (this._isRunning) return;
+    if (this._isSuspended) return;
     var stats = {};
     try {
       this._isRunning = true;
