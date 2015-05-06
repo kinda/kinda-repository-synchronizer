@@ -130,6 +130,7 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
 
   this.run = function *() {
     if (this._isRunning) return;
+    var stats = {};
     try {
       this._isRunning = true;
       var remoteRepositoryId = yield this.getRemoteRepositoryId();
@@ -138,17 +139,18 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
       yield this.initializeSynchronizer();
       var localStats = yield this.receiveRemoteItems();
       var remoteStats = yield this.sendLocalItems();
+      stats = {
+        updatedLocalItemsCount: localStats.updatedItemsCount,
+        deletedLocalItemsCount: localStats.deletedItemsCount,
+        updatedRemoteItemsCount: remoteStats.updatedItemsCount,
+        deletedRemoteItemsCount: remoteStats.deletedItemsCount
+      };
       this._lastSynchronizationDate = new Date();
     } finally {
       this._isRunning = false;
-      this.emit('didRun');
+      this.emit('didRun', stats);
     }
-    return {
-      updatedLocalItemsCount: localStats.updatedItemsCount,
-      deletedLocalItemsCount: localStats.deletedItemsCount,
-      updatedRemoteItemsCount: remoteStats.updatedItemsCount,
-      deletedRemoteItemsCount: remoteStats.deletedItemsCount
-    };
+    return stats;
   };
 
   this.receiveRemoteItems = function *() {
