@@ -175,6 +175,8 @@ var LocalHistory = KindaObject.extend('LocalHistory', function() {
   };
 
   this.getStatistics = function *() {
+    var result = yield this.getLastSequenceNumber();
+    var lastSequenceNumber = result.lastSequenceNumber;
     var store = this.repository.getStore();
     var primaryKeyIndexesCount = yield store.getCount({
       prefix: this.primaryKeyIndexPrefix
@@ -183,6 +185,7 @@ var LocalHistory = KindaObject.extend('LocalHistory', function() {
       prefix: this.sequenceNumberIndexPrefix
     });
     return {
+      lastSequenceNumber: lastSequenceNumber,
       primaryKeyIndexesCount: primaryKeyIndexesCount,
       sequenceNumberIndexesCount: sequenceNumberIndexesCount
     };
