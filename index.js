@@ -40,7 +40,10 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
       options.authorizationIsRequired : true
     );
 
-    this.connectivity = Connectivity.create(remoteRepository.baseURL);
+    var pingURL = remoteRepository.baseURL;
+    if (!_.endsWith(pingURL, '/')) pingURL += '/';
+    pingURL += 'ping';
+    this.connectivity = Connectivity.create(pingURL);
     this.connectivity.monitor();
   });
 
