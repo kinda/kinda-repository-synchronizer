@@ -67,7 +67,9 @@ suite('KindaRepositorySynchronizer', function() {
     frontentRemoteRepository.use(RemoteHistory.create());
 
     synchronizer = RepositorySynchronizer.create(
-      frontentLocalRepository, frontentRemoteRepository
+      frontentLocalRepository,
+      frontentRemoteRepository,
+      { authorizationIsRequired: false }
     );
 
     // --- backend ---

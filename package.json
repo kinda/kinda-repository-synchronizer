@@ -19,6 +19,7 @@
   "dependencies": {
     "co": "^4.5.4",
     "co-wait": "0.0.0",
+    "kinda-connectivity": "^0.1.4",
     "kinda-http-client": "^0.1.4",
     "kinda-log": "^0.1.10",
     "kinda-object": "^0.1.12",

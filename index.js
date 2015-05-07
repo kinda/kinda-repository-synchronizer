@@ -3,18 +3,21 @@
 var _ = require('lodash');
 var KindaObject = require('kinda-object');
 var log = require('kinda-log').create();
+var Connectivity = require('kinda-connectivity');
 var LocalHistory = require('./local-history');
 var RemoteHistory = require('./remote-history');
 
 var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronizer', function() {
   this.setCreator(function(localRepository, remoteRepository, options) {
     if (!options) options = {};
+
     if (!localRepository.history) {
       localRepository.use(LocalHistory.create(options));
     }
     if (!remoteRepository.history) {
       remoteRepository.use(RemoteHistory.create(options));
     }
+
     this.localRepository = localRepository;
     localRepository.synchronizer = this;
     this.remoteRepository = remoteRepository;
@@ -31,6 +34,14 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
       delete this._remoteHistoryLastSequenceNumber;
       yield this.resume();
     }.bind(this));
+
+    this.authorizationIsRequired = (
+      options.authorizationIsRequired != null ?
+      options.authorizationIsRequired : true
+    );
+
+    this.connectivity = Connectivity.create(remoteRepository.baseURL);
+    this.connectivity.monitor();
   });
 
   this.getFilter = function() {
@@ -99,7 +110,7 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
       try {
         this.emit('didStart');
         while (!this._isStopping) {
-          yield this.run();
+          yield this.run(true);
           if (!this._isStopping) {
             this._timeout = util.createTimeout(30 * 1000); // 30 secondes
             yield this._timeout.start();
@@ -151,10 +162,23 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     return this._lastSynchronizationDate;
   };
 
-  this.run = function *() {
-    if (this._isRunning) return;
-    if (this._isSuspended) return;
+  this.run = function *(quietMode) {
     var stats = {};
+    if (this._isRunning) return stats;
+    if (this._isSuspended) return stats;
+    if (this.authorizationIsRequired && !this.remoteRepository.authorization) {
+      if (!quietMode) {
+        log.notice('an authorization is required to run the synchronizer');
+      }
+      return stats;
+    }
+    if (this.connectivity.isOffline == null) yield this.connectivity.ping();
+    if (this.connectivity.isOffline) {
+      if (!quietMode) {
+        log.notice('a working connection is required to run the synchronizer');
+      }
+      return stats;
+    }
     try {
       this._isRunning = true;
       var remoteRepositoryId = yield this.getRemoteRepositoryId();
@@ -170,9 +194,12 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
         deletedRemoteItemsCount: remoteStats.deletedItemsCount
       };
       this._lastSynchronizationDate = new Date();
+      this.emit('didRun', stats);
+    } catch (err) {
+      this.emit('didFail');
+      throw err;
     } finally {
       this._isRunning = false;
-      this.emit('didRun', stats);
     }
     return stats;
   };
