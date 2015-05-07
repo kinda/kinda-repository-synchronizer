@@ -40,6 +40,8 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
       options.authorizationIsRequired : true
     );
 
+    this.filterIsRequired = options.filterIsRequired;
+
     var pingURL = remoteRepository.baseURL;
     if (!_.endsWith(pingURL, '/')) pingURL += '/';
     pingURL += 'ping';
@@ -172,6 +174,12 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     if (this.authorizationIsRequired && !this.remoteRepository.authorization) {
       if (!quietMode) {
         log.notice('an authorization is required to run the synchronizer');
+      }
+      return stats;
+    }
+    if (this.filterIsRequired && !this.getFilter()) {
+      if (!quietMode) {
+        log.notice('a filter is required to run the synchronizer');
       }
       return stats;
     }
