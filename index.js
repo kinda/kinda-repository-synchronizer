@@ -1,8 +1,11 @@
 "use strict";
 
 var _ = require('lodash');
+var co = require('co');
+var wait = require('co-wait');
 var KindaObject = require('kinda-object');
 var log = require('kinda-log').create();
+var util = require('kinda-util').create();
 var Connectivity = require('kinda-connectivity');
 var LocalHistory = require('./local-history');
 var RemoteHistory = require('./remote-history');
@@ -117,7 +120,7 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
         while (!this._isStopping) {
           yield this.run(true);
           if (!this._isStopping) {
-            this._timeout = util.createTimeout(30 * 1000); // 30 secondes
+            this._timeout = util.createTimeout(30 * 1000); // 30 seconds
             yield this._timeout.start();
             this._timeout = undefined;
           }
@@ -171,7 +174,7 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     var stats = {};
     if (this._isRunning) return stats;
     if (this._isSuspended) return stats;
-    if (this.authorizationIsRequired && !this.remoteRepository.authorization) {
+    if (this.authorizationIsRequired && !this.remoteRepository.getAuthorization()) {
       if (!quietMode) {
         log.notice('an authorization is required to run the synchronizer');
       }
