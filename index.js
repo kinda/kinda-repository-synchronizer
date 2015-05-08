@@ -57,6 +57,7 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
   };
 
   this.setFilter = function(filter) {
+    if (filter && !_.isArray(filter)) filter = [filter];
     this._filter = filter;
   };
 
@@ -118,15 +119,17 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
       try {
         this.emit('didStart');
         while (!this._isStopping) {
-          yield this.run(true);
+          try {
+            yield this.run(true);
+          } catch (err) {
+            log.error(err);
+          }
           if (!this._isStopping) {
             this._timeout = util.createTimeout(30 * 1000); // 30 seconds
             yield this._timeout.start();
             this._timeout = undefined;
           }
         }
-      } catch (err) {
-        log.error(err);
       } finally {
         this._isStarted = false;
         this._isStopping = false;

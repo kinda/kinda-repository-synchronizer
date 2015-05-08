@@ -136,11 +136,19 @@ var LocalHistory = KindaObject.extend('LocalHistory', function() {
         }
         if (filter) {
           var projection = value.projection;
-          if (!projection) return;
-          for (var key in filter) {
-            if (!filter.hasOwnProperty(key)) continue;
-            if (projection[key] !== filter[key]) return;
-          }
+          var isOkay = _.some(filter, function(condition) {
+            for (var key in condition) {
+              if (!condition.hasOwnProperty(key)) continue;
+              if (key === '$primaryKey') {
+                if (value.primaryKey !== condition.$primaryKey) return false;
+              } else {
+                if (!projection) return false;
+                if (projection[key] !== condition[key]) return false;
+              }
+            }
+            return true;
+          });
+          if (!isOkay) return;
         }
         items.push(_.omit(value, 'projection'));
       });
