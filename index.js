@@ -57,7 +57,6 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
   };
 
   this.setFilter = function(filter) {
-    if (filter && !_.isArray(filter)) filter = [filter];
     this._filter = filter;
   };
 

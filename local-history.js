@@ -128,6 +128,7 @@ var LocalHistory = KindaObject.extend('LocalHistory', function() {
         limit: 100000 // TODO: implement forEach in the store and use it here
       });
       var filter = options.filter;
+      if (filter && !_.isArray(filter)) filter = [filter];
       var ignoreOriginRepositoryId = options.ignoreOriginRepositoryId;
       results.forEach(function(result) {
         var value = result.value;
