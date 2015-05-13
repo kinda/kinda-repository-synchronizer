@@ -291,8 +291,9 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     for (var i = 0; i < ids.length; i++) {
       // TODO: implement deleteItems() in kinda-repository and use it there
       var id = ids[i];
-      var hasBeenDeleted = yield localCollection.deleteItem(id, {
-        errorIfMissing: false,
+      var localItem = yield localCollection.getItem(id, { errorIfMissing: false });
+      if (!localItem) continue;
+      var hasBeenDeleted = yield localItem.delete({
         originRepositoryId: remoteRepositoryId
       });
       if (hasBeenDeleted) deletedItemsCount++;

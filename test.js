@@ -90,7 +90,7 @@ suite('KindaRepositorySynchronizer', function() {
     repositoryServer.use(HistoryServer.create());
 
     var server = koa();
-    server.use(log.logger());
+    server.use(log.getLoggerMiddleware());
     server.use(repositoryServer.getMiddleware());
     httpServer = http.createServer(server.callback());
     httpServer.listen(serverPort);
