@@ -58,17 +58,19 @@ var LocalHistory = KindaObject.extend('LocalHistory', function() {
 
   this.updateItem = function *(repository, item, operation, options) {
     if (!repository) repository = this.repository;
+    if (!options) options = {};
 
     var collectionName = item.getCollection().getClassName();
     if (_.includes(this.excludedCollections, collectionName)) return;
+
+    if (options.source === 'computer') return;
 
     if (!repository.isInsideTransaction()) {
       throw new Error('current repository should be inside a transaction');
     }
 
     var repositoryId = yield repository.getRepositoryId();
-    var originRepositoryId = options && options.originRepositoryId;
-    if (!originRepositoryId) originRepositoryId = repositoryId;
+    var originRepositoryId = options.originRepositoryId || repositoryId;
 
     var store = repository.getStore();
 
