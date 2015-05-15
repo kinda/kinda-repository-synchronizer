@@ -277,6 +277,7 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
       localItem.isNew = false;
       yield localItem.save({
         createIfMissing: true,
+        source: 'localSynchronizer',
         originRepositoryId: remoteRepositoryId
       });
       updatedItemsCount++;
@@ -294,6 +295,7 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
       var localItem = yield localCollection.getItem(id, { errorIfMissing: false });
       if (!localItem) continue;
       var hasBeenDeleted = yield localItem.delete({
+        source: 'localSynchronizer',
         originRepositoryId: remoteRepositoryId
       });
       if (hasBeenDeleted) deletedItemsCount++;
@@ -349,6 +351,7 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
       remoteItem.isNew = false;
       yield remoteItem.save({
         createIfMissing: true,
+        source: 'remoteSynchronizer',
         originRepositoryId: localRepositoryId
       });
       updatedItemsCount++;
@@ -363,6 +366,7 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
       var id = ids[i];
       var hasBeenDeleted = yield remoteCollection.deleteItem(id, {
         errorIfMissing: false,
+        source: 'remoteSynchronizer',
         originRepositoryId: localRepositoryId
       });
       if (hasBeenDeleted) deletedItemsCount++;

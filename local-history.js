@@ -87,8 +87,8 @@ var LocalHistory = KindaObject.extend('LocalHistory', function() {
       yield store.del(oldSequenceNumberIndexKey);
     }
 
-    if (repository.synchronizer && originRepositoryId !== repositoryId) {
-      // in case the item comes from the synchronizer
+    if (options.source === 'localSynchronizer') {
+      // in case the item comes from the local synchronizer
       // we must remove it from the local history
       if (primaryKeyIndexValue) yield store.del(primaryKeyIndexKey);
       return;
