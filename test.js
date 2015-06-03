@@ -1,46 +1,35 @@
-"use strict";
+'use strict';
 
-var http = require('http');
+let http = require('http');
 require('co-mocha');
-var assert = require('chai').assert;
-var _ = require('lodash');
-var koa = require('koa');
-var log = require('kinda-log').create();
-var Collection = require('kinda-collection');
-var KindaLocalRepository = require('kinda-local-repository');
-var KindaRemoteRepository = require('kinda-remote-repository');
-var KindaRepositoryServer = require('kinda-repository-server');
-var LocalHistory = require('./local-history');
-var RemoteHistory = require('./remote-history');
-var HistoryServer = require('./history-server');
-var RepositorySynchronizer = require('./');
+let assert = require('chai').assert;
+let koa = require('koa');
+let log = require('kinda-log').create();
+let Collection = require('kinda-collection');
+let KindaLocalRepository = require('kinda-local-repository');
+let KindaRemoteRepository = require('kinda-remote-repository');
+let KindaRepositoryServer = require('kinda-repository-server');
+let KindaRepositorySynchronizer = require('./src');
+let LocalHistory = KindaRepositorySynchronizer.LocalHistory;
+let RemoteHistory = KindaRepositorySynchronizer.RemoteHistory;
+let HistoryServer = KindaRepositorySynchronizer.HistoryServer;
 
 suite('KindaRepositorySynchronizer', function() {
-  var frontentLocalRepository, frontentRemoteRepository, backendRepository;
-  var frontendPeople, backendPeople;
-  var synchronizer, httpServer;
-
-  var catchError = function *(fn) {
-    var err;
-    try {
-      yield fn();
-    } catch (e) {
-      err = e
-    }
-    return err;
-  };
+  let frontentLocalRepository, frontentRemoteRepository, backendRepository;
+  let frontendPeople, backendPeople;
+  let synchronizer, httpServer;
 
   suiteSetup(function *() {
-    var serverPort = 8888;
+    let serverPort = 8888;
 
-    var Elements = Collection.extend('Elements', function() {
+    let Elements = Collection.extend('Elements', function() {
       this.Item = this.Item.extend('Element', function() {
         this.addPrimaryKeyProperty('id', String);
         this.addForeignKeyProperty('tenantId', String);
       });
     });
 
-    var People = Elements.extend('People', function() {
+    let People = Elements.extend('People', function() {
       this.Item = this.Item.extend('Person', function() {
         this.addProperty('firstName', String);
         this.addProperty('lastName', String);
@@ -50,188 +39,194 @@ suite('KindaRepositorySynchronizer', function() {
 
     // --- frontend ---
 
-    frontentLocalRepository = KindaLocalRepository.create(
-      'FrontendTest',
-      'mysql://test@localhost/test',
-      [Elements, People]
-    );
+    frontentLocalRepository = KindaLocalRepository.create({
+      name: 'FrontendTest',
+      url: 'mysql://test@localhost/test',
+      collections: [Elements, People]
+    });
     frontentLocalRepository.use(LocalHistory.create({ projection: ['tenantId'] }));
     frontendPeople = frontentLocalRepository.createCollection('People');
-    frontendPeople.context = {};
 
-    frontentRemoteRepository = KindaRemoteRepository.create(
-      'Test',
-      'http://localhost:' + serverPort,
-      [Elements, People]
-    );
+    frontentRemoteRepository = KindaRemoteRepository.create({
+      name: 'Test',
+      url: 'http://localhost:' + serverPort,
+      collections: [Elements, People]
+    });
     frontentRemoteRepository.use(RemoteHistory.create());
 
-    synchronizer = RepositorySynchronizer.create(
-      frontentLocalRepository,
-      frontentRemoteRepository,
-      { authorizationIsRequired: false }
-    );
+    synchronizer = KindaRepositorySynchronizer.create({
+      localRepository: frontentLocalRepository,
+      remoteRepository: frontentRemoteRepository,
+      authorizationIsRequired: false
+    });
 
     // --- backend ---
 
-    backendRepository = KindaLocalRepository.create(
-      'BackendTest',
-      'mysql://test@localhost/test',
-      [Elements, People]
-    );
+    backendRepository = KindaLocalRepository.create({
+      name: 'BackendTest',
+      url: 'mysql://test@localhost/test',
+      collections: [Elements, People]
+    });
     backendRepository.use(LocalHistory.create({ projection: ['tenantId'] }));
     backendPeople = backendRepository.createCollection('People');
-    backendPeople.context = {};
 
-    var repositoryServer = KindaRepositoryServer.create(
-      backendRepository, backendRepository
-    );
+    let repositoryServer = KindaRepositoryServer.create({
+      repository: backendRepository
+    });
 
     repositoryServer.use(HistoryServer.create());
 
-    var server = koa();
+    let server = koa();
     server.use(log.getLoggerMiddleware());
     server.use(repositoryServer.getMiddleware());
     httpServer = http.createServer(server.callback());
-    httpServer.listen(serverPort);
+    yield function(cb) {
+      httpServer.listen(serverPort, cb);
+    };
+
+    // fix an issue when mocha runs in watch mode:
+    yield synchronizer.connectivity.ping();
   });
 
   suiteTeardown(function *() {
-    httpServer.close();
+    yield function(cb) {
+      httpServer.close(cb);
+    };
     yield frontentLocalRepository.destroyRepository();
     yield backendRepository.destroyRepository();
   });
 
   test('test frontend local history', function *() {
-    var repositoryId = yield frontentLocalRepository.getRepositoryId();
+    let repositoryId = yield frontentLocalRepository.getRepositoryId();
+    assert.ok(repositoryId);
 
-    var history = frontentLocalRepository.history;
+    let history = frontentLocalRepository.history;
 
-    var result = yield history.getLastSequenceNumber();
-    var initialLastSequenceNumber = result.lastSequenceNumber;
+    let result = yield history.getLastSequenceNumber();
+    let initialLastSequenceNumber = result.lastSequenceNumber;
 
-    var result = yield history.findItemsAfterSequenceNumber();
+    result = yield history.findItemsAfterSequenceNumber();
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber);
     assert.strictEqual(result.items.length, 0);
 
-    var person1 = frontendPeople.createItem({
+    let person1 = frontendPeople.createItem({
       tenantId: 'abcdef',
       firstName: 'Manuel',
-      lastName: 'Vila',
+      lastName: 'Vila'
     });
     yield person1.save();
 
-    var person2 = frontendPeople.createItem({
+    let person2 = frontendPeople.createItem({
       tenantId: 'ghijkl',
       firstName: 'Jack',
-      lastName: 'Daniel',
+      lastName: 'Daniel'
     });
     yield person2.save();
 
-    var result = yield history.findItemsAfterSequenceNumber();
+    result = yield history.findItemsAfterSequenceNumber();
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 2);
     assert.strictEqual(result.items.length, 2);
     assert.strictEqual(result.items[0].primaryKey, person1.id);
     assert.strictEqual(result.items[1].primaryKey, person2.id);
 
-    var result = yield history.findItemsAfterSequenceNumber(initialLastSequenceNumber + 2);
+    result = yield history.findItemsAfterSequenceNumber(initialLastSequenceNumber + 2);
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 2);
     assert.strictEqual(result.items.length, 0);
 
-    var result = yield history.findItemsAfterSequenceNumber(
+    result = yield history.findItemsAfterSequenceNumber(
       initialLastSequenceNumber, { filter: { tenantId: 'abcdef' } }
     );
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 2);
     assert.strictEqual(result.items.length, 1);
     assert.strictEqual(result.items[0].primaryKey, person1.id);
 
-    var result = yield history.findItemsAfterSequenceNumber(
+    result = yield history.findItemsAfterSequenceNumber(
       initialLastSequenceNumber, { filter: { tenantId: 'ghijkl' } }
     );
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 2);
     assert.strictEqual(result.items.length, 1);
     assert.strictEqual(result.items[0].primaryKey, person2.id);
 
-    var stats = yield history.getStatistics();
+    let stats = yield history.getStatistics();
     assert.strictEqual(stats.primaryKeyIndexesCount, 2);
     assert.strictEqual(stats.sequenceNumberIndexesCount, 2);
 
     yield person1.delete();
 
-    var result = yield history.findItemsAfterSequenceNumber();
+    result = yield history.findItemsAfterSequenceNumber();
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 3);
     assert.strictEqual(result.items.length, 2);
     assert.strictEqual(result.items[0].primaryKey, person2.id);
     assert.strictEqual(result.items[1].primaryKey, person1.id);
     assert.isTrue(result.items[1].isDeleted);
 
-    var stats = yield history.getStatistics();
+    stats = yield history.getStatistics();
     assert.strictEqual(stats.primaryKeyIndexesCount, 2);
     assert.strictEqual(stats.sequenceNumberIndexesCount, 2);
 
     yield history.forgetDeletedItems();
 
-    var stats = yield history.getStatistics();
+    stats = yield history.getStatistics();
     assert.strictEqual(stats.primaryKeyIndexesCount, 1);
     assert.strictEqual(stats.sequenceNumberIndexesCount, 1);
 
-    var result = yield history.findItemsAfterSequenceNumber();
+    result = yield history.findItemsAfterSequenceNumber();
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 3);
     assert.strictEqual(result.items.length, 1);
     assert.strictEqual(result.items[0].primaryKey, person2.id);
 
     yield person2.delete();
 
-    var result = yield history.findItemsAfterSequenceNumber();
+    result = yield history.findItemsAfterSequenceNumber();
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 4);
     assert.strictEqual(result.items.length, 1);
     assert.strictEqual(result.items[0].primaryKey, person2.id);
     assert.isTrue(result.items[0].isDeleted);
 
-    var stats = yield history.getStatistics();
+    stats = yield history.getStatistics();
     assert.strictEqual(stats.primaryKeyIndexesCount, 1);
     assert.strictEqual(stats.sequenceNumberIndexesCount, 1);
 
     yield history.forgetDeletedItems();
 
-    var stats = yield history.getStatistics();
+    stats = yield history.getStatistics();
     assert.strictEqual(stats.primaryKeyIndexesCount, 0);
     assert.strictEqual(stats.sequenceNumberIndexesCount, 0);
   });
 
   test('test frontend remote history', function *() {
-    var repositoryId = yield backendRepository.getRepositoryId();
-    var remoteRepositoryId = yield frontentRemoteRepository.getRepositoryId();
+    let repositoryId = yield backendRepository.getRepositoryId();
+    let remoteRepositoryId = yield frontentRemoteRepository.getRepositoryId();
     assert.ok(remoteRepositoryId);
     assert.strictEqual(remoteRepositoryId, repositoryId);
 
-    var history = frontentRemoteRepository.history;
+    let history = frontentRemoteRepository.history;
 
-    var result = yield history.getLastSequenceNumber();
+    let result = yield history.getLastSequenceNumber();
     assert.ok(result.repositoryId);
     assert.strictEqual(result.repositoryId, repositoryId);
-    var initialLastSequenceNumber = result.lastSequenceNumber;
+    let initialLastSequenceNumber = result.lastSequenceNumber;
     assert.isNumber(initialLastSequenceNumber);
 
-    var result = yield history.findItemsAfterSequenceNumber();
+    result = yield history.findItemsAfterSequenceNumber();
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber);
     assert.strictEqual(result.items.length, 0);
 
-    var person1 = backendPeople.createItem({
+    let person1 = backendPeople.createItem({
       tenantId: 'abcdef',
       firstName: 'Manuel',
-      lastName: 'Vila',
+      lastName: 'Vila'
     });
     yield person1.save();
 
-    var person2 = backendPeople.createItem({
+    let person2 = backendPeople.createItem({
       tenantId: 'ghijkl',
       firstName: 'Jack',
-      lastName: 'Daniel',
+      lastName: 'Daniel'
     });
     yield person2.save({ originRepositoryId: 'a1b2c3' });
 
-    var result = yield history.findItemsAfterSequenceNumber();
+    result = yield history.findItemsAfterSequenceNumber();
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 2);
     assert.strictEqual(result.items.length, 2);
     assert.strictEqual(result.items[0].primaryKey, person1.id);
@@ -239,18 +234,18 @@ suite('KindaRepositorySynchronizer', function() {
     assert.strictEqual(result.items[1].primaryKey, person2.id);
     assert.strictEqual(result.items[1].originRepositoryId, 'a1b2c3');
 
-    var result = yield history.findItemsAfterSequenceNumber(initialLastSequenceNumber + 2);
+    result = yield history.findItemsAfterSequenceNumber(initialLastSequenceNumber + 2);
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 2);
     assert.strictEqual(result.items.length, 0);
 
-    var result = yield history.findItemsAfterSequenceNumber(
+    result = yield history.findItemsAfterSequenceNumber(
       initialLastSequenceNumber, { ignoreOriginRepositoryId: 'a1b2c3' }
     );
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 2);
     assert.strictEqual(result.items.length, 1);
     assert.strictEqual(result.items[0].primaryKey, person1.id);
 
-    var result = yield history.findItemsAfterSequenceNumber(
+    result = yield history.findItemsAfterSequenceNumber(
       initialLastSequenceNumber, { filter: { tenantId: 'abcdef' } }
     );
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 2);
@@ -264,53 +259,53 @@ suite('KindaRepositorySynchronizer', function() {
 
   test('initialize synchronizer', function *() {
     yield synchronizer.initializeSynchronizer();
-    var remoteRepositoryId = yield synchronizer.getRemoteRepositoryId();
+    let remoteRepositoryId = yield synchronizer.getRemoteRepositoryId();
     assert.ok(remoteRepositoryId);
-    var repositoryId = yield frontentRemoteRepository.getRepositoryId();
+    let repositoryId = yield frontentRemoteRepository.getRepositoryId();
     assert.strictEqual(repositoryId, remoteRepositoryId);
-    var sequenceNumber = yield synchronizer.getRemoteHistoryLastSequenceNumber();
+    let sequenceNumber = yield synchronizer.getRemoteHistoryLastSequenceNumber();
     assert.strictEqual(sequenceNumber, 0);
   });
 
   test('synchronize remote changes', function *() {
-    var stats = yield synchronizer.run();
+    let stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    var backendPerson = backendPeople.createItem({
+    let backendPerson = backendPeople.createItem({
       tenantId: 'abcdef',
       firstName: 'Manuel',
-      lastName: 'Vila',
+      lastName: 'Vila'
     });
     yield backendPerson.save();
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 1);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    var frontendPerson = yield frontendPeople.getItem(backendPerson.id);
+    let frontendPerson = yield frontendPeople.getItem(backendPerson.id);
     assert.strictEqual(frontendPerson.firstName, 'Manuel');
 
     backendPerson.firstName = 'Manu';
     yield backendPerson.save();
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 1);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
@@ -321,63 +316,63 @@ suite('KindaRepositorySynchronizer', function() {
 
     yield backendPerson.delete();
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 1);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    var frontendPerson = yield frontendPeople.getItem(
+    frontendPerson = yield frontendPeople.getItem(
       frontendPerson.id, { errorIfMissing: false }
     );
     assert.isUndefined(frontendPerson);
   });
 
   test('synchronize local changes', function *() {
-    var stats = yield synchronizer.run();
+    let stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    var frontendPerson = frontendPeople.createItem({
+    let frontendPerson = frontendPeople.createItem({
       tenantId: 'abcdef',
       firstName: 'Manuel',
-      lastName: 'Vila',
+      lastName: 'Vila'
     });
     yield frontendPerson.save();
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 1);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    var backendPerson = yield backendPeople.getItem(frontendPerson.id);
+    let backendPerson = yield backendPeople.getItem(frontendPerson.id);
     assert.strictEqual(backendPerson.firstName, 'Manuel');
 
     frontendPerson.firstName = 'Manu';
     yield frontendPerson.save();
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 1);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
@@ -388,41 +383,41 @@ suite('KindaRepositorySynchronizer', function() {
 
     yield frontendPerson.delete();
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 1);
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    var backendPerson = yield backendPeople.getItem(
+    backendPerson = yield backendPeople.getItem(
       backendPerson.id, { errorIfMissing: false }
     );
     assert.isUndefined(backendPerson);
   });
 
   test('synchronize conflictual changes', function *() {
-    var stats = yield synchronizer.run();
+    let stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    var backendPerson = backendPeople.createItem({
+    let backendPerson = backendPeople.createItem({
       tenantId: 'abcdef',
       firstName: 'Manuel',
-      lastName: 'Vila',
+      lastName: 'Vila'
     });
     yield backendPerson.save();
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
 
-    var frontendPerson = yield frontendPeople.getItem(backendPerson.id);
+    let frontendPerson = yield frontendPeople.getItem(backendPerson.id);
     assert.strictEqual(frontendPerson.firstName, 'Manuel');
 
     backendPerson.firstName = 'Manu';
@@ -434,13 +429,13 @@ suite('KindaRepositorySynchronizer', function() {
     yield frontendPerson.load();
     assert.strictEqual(frontendPerson.firstName, 'Manuelo');
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 1);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
@@ -454,31 +449,31 @@ suite('KindaRepositorySynchronizer', function() {
 
     yield frontendPerson.delete();
 
-    var frontendPerson = yield frontendPeople.getItem(
+    frontendPerson = yield frontendPeople.getItem(
       frontendPerson.id, { errorIfMissing: false }
     );
     assert.isUndefined(frontendPerson);
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 1);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    var frontendPerson = yield frontendPeople.getItem(backendPerson.id);
+    frontendPerson = yield frontendPeople.getItem(backendPerson.id);
     assert.strictEqual(frontendPerson.firstName, 'Manueli');
 
     yield backendPerson.delete();
 
     yield frontendPerson.delete();
 
-    var stats = yield synchronizer.run();
+    stats = yield synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);

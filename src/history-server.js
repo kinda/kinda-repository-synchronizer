@@ -1,15 +1,15 @@
-"use strict";
+'use strict';
 
-var _ = require('lodash');
-var KindaObject = require('kinda-object');
+let _ = require('lodash');
+let KindaObject = require('kinda-object');
 
-var HistoryServer = KindaObject.extend('HistoryServer', function() {
+let HistoryServer = KindaObject.extend('HistoryServer', function() {
   this.plug = function(repositoryServer) {
     this.repositoryServer = repositoryServer;
     repositoryServer.historyServer = this;
 
     // TODO: don't monkey patch
-    var superHandleRequest = repositoryServer._handleRequest;
+    let superHandleRequest = repositoryServer._handleRequest;
     repositoryServer._handleRequest = function *(ctx, slug, path, next) {
       if (slug === 'history') {
         yield this.handleGetHistoryLastSequenceNumberRequest(ctx);
@@ -27,16 +27,16 @@ var HistoryServer = KindaObject.extend('HistoryServer', function() {
     // TODO: don't monkey patch
     repositoryServer.handleGetHistoryLastSequenceNumberRequest = function *(ctx) {
       yield this.authorizeRequest(ctx, 'getHistoryLastSequenceNumber');
-      var result = yield this.repository.history.getLastSequenceNumber();
+      let result = yield this.repository.history.getLastSequenceNumber();
       ctx.body = result;
     };
 
     // TODO: don't monkey patch
     repositoryServer.handleFindHistoryItemsAfterSequenceNumberRequest = function *(ctx) {
       yield this.authorizeRequest(ctx, 'findHistoryItemsAfterSequenceNumber');
-      var sequenceNumber = ctx.options.startAfter || 0;
-      var options = _.omit(ctx.options, ['order', 'startAfter']);
-      var result = yield this.repository.history.findItemsAfterSequenceNumber(sequenceNumber, options);
+      let sequenceNumber = ctx.options.startAfter || 0;
+      let options = _.omit(ctx.options, ['order', 'startAfter']);
+      let result = yield this.repository.history.findItemsAfterSequenceNumber(sequenceNumber, options);
       ctx.body = result;
     };
   };

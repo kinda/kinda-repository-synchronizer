@@ -1,18 +1,25 @@
-"use strict";
+'use strict';
 
-var _ = require('lodash');
-var co = require('co');
-var wait = require('co-wait');
-var KindaObject = require('kinda-object');
-var log = require('kinda-log').create();
-var util = require('kinda-util').create();
-var Connectivity = require('kinda-connectivity');
-var LocalHistory = require('./local-history');
-var RemoteHistory = require('./remote-history');
+let _ = require('lodash');
+let co = require('co');
+let wait = require('co-wait');
+let KindaObject = require('kinda-object');
+let KindaEventManager = require('kinda-event-manager');
+let util = require('kinda-util').create();
+let KindaLog = require('kinda-log');
+let KindaConnectivity = require('kinda-connectivity');
+let LocalHistory = require('./local-history');
+let RemoteHistory = require('./remote-history');
+let HistoryServer = require('./history-server');
 
-var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronizer', function() {
-  this.setCreator(function(localRepository, remoteRepository, options) {
-    if (!options) options = {};
+let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronizer', function() {
+  this.include(KindaEventManager);
+
+  this.creator = function(options = {}) {
+    if (!options.localRepository) throw new Error('local repository is missing');
+    let localRepository = options.localRepository;
+    if (!options.remoteRepository) throw new Error('remote repository is missing');
+    let remoteRepository = options.remoteRepository;
 
     if (!localRepository.history) {
       localRepository.use(LocalHistory.create(options));
@@ -25,7 +32,33 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     localRepository.synchronizer = this;
     this.remoteRepository = remoteRepository;
     remoteRepository.synchronizer = this;
-    if (options.filter) this.setFilter(options.filter);
+
+    if (options.filter) this.filter = options.filter;
+
+    this.filterIsRequired = options.filterIsRequired;
+
+    this.authorizationIsRequired = (
+      options.authorizationIsRequired != null ?
+      options.authorizationIsRequired : true
+    );
+
+    let log = options.log;
+    if (!KindaLog.isClassOf(log)) log = KindaLog.create(log);
+    this.log = log;
+
+    let connectivity = options.connectivity;
+    if (!KindaConnectivity.isClassOf(connectivity)) {
+      if (!connectivity) connectivity = {};
+      if (!connectivity.url) {
+        let url = remoteRepository.baseURL;
+        if (!_.endsWith(url, '/')) url += '/';
+        url += 'ping';
+        connectivity.url = url;
+      }
+      connectivity = KindaConnectivity.create(connectivity);
+    }
+    this.connectivity = connectivity;
+    this.connectivity.monitor();
 
     localRepository.onAsync('willDestroy', function *() {
       yield this.suspend();
@@ -37,40 +70,28 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
       delete this._remoteHistoryLastSequenceNumber;
       yield this.resume();
     }.bind(this));
+  };
 
-    this.authorizationIsRequired = (
-      options.authorizationIsRequired != null ?
-      options.authorizationIsRequired : true
-    );
-
-    this.filterIsRequired = options.filterIsRequired;
-
-    var pingURL = remoteRepository.baseURL;
-    if (!_.endsWith(pingURL, '/')) pingURL += '/';
-    pingURL += 'ping';
-    this.connectivity = Connectivity.create(pingURL);
-    this.connectivity.monitor();
+  Object.defineProperty(this, 'filter', {
+    get() {
+      return this._filter;
+    },
+    set(filter) {
+      this._filter = filter;
+    }
   });
-
-  this.getFilter = function() {
-    return this._filter;
-  };
-
-  this.setFilter = function(filter) {
-    this._filter = filter;
-  };
 
   this.getRemoteRepositoryId = function *() {
     if (this._remoteRepositoryId) return this._remoteRepositoryId;
-    var record = yield this.localRepository.loadRepositoryRecord();
-    var remoteRepositoryId = record.remoteRepositoryId;
-    if (!remoteRepositoryId) return;
+    let record = yield this.localRepository.loadRepositoryRecord();
+    let remoteRepositoryId = record.remoteRepositoryId;
+    if (!remoteRepositoryId) return undefined;
     this._remoteRepositoryId = remoteRepositoryId;
     return remoteRepositoryId;
   };
 
   this.setRemoteRepositoryId = function *(remoteRepositoryId) {
-    var record = yield this.localRepository.loadRepositoryRecord();
+    let record = yield this.localRepository.loadRepositoryRecord();
     record.remoteRepositoryId = remoteRepositoryId;
     yield this.localRepository.saveRepositoryRecord(record);
     this._remoteRepositoryId = remoteRepositoryId;
@@ -80,15 +101,15 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     if (this._remoteHistoryLastSequenceNumber != null) {
       return this._remoteHistoryLastSequenceNumber;
     }
-    var record = yield this.localRepository.loadRepositoryRecord();
-    var sequenceNumber = record.remoteHistoryLastSequenceNumber;
-    if (sequenceNumber == null) return;
+    let record = yield this.localRepository.loadRepositoryRecord();
+    let sequenceNumber = record.remoteHistoryLastSequenceNumber;
+    if (sequenceNumber == null) return undefined;
     this._remoteHistoryLastSequenceNumber = sequenceNumber;
     return sequenceNumber;
   };
 
   this.setRemoteHistoryLastSequenceNumber = function *(sequenceNumber) {
-    var record = yield this.localRepository.loadRepositoryRecord();
+    let record = yield this.localRepository.loadRepositoryRecord();
     record.remoteHistoryLastSequenceNumber = sequenceNumber;
     yield this.localRepository.saveRepositoryRecord(record);
     this._remoteHistoryLastSequenceNumber = sequenceNumber;
@@ -96,12 +117,12 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
 
   this.initializeSynchronizer = function *() {
     if (this.hasBeenInitialized) return;
-    var repositoryId = yield this.getRemoteRepositoryId();
+    let repositoryId = yield this.getRemoteRepositoryId();
     if (!repositoryId) {
       repositoryId = yield this.remoteRepository.getRepositoryId();
       yield this.setRemoteRepositoryId(repositoryId);
     }
-    var sequenceNumber = yield this.getRemoteHistoryLastSequenceNumber();
+    let sequenceNumber = yield this.getRemoteHistoryLastSequenceNumber();
     if (sequenceNumber == null) {
       sequenceNumber = 0;
       yield this.setRemoteHistoryLastSequenceNumber(sequenceNumber);
@@ -121,7 +142,7 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
           try {
             yield this.run(true);
           } catch (err) {
-            log.error(err);
+            this.log.error(err);
           }
           if (!this._isStopping) {
             this._timeout = util.createTimeout(30 * 1000); // 30 seconds
@@ -135,7 +156,7 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
       }
       this.emit('didStop');
     }.bind(this)).catch(function(err) {
-      log.error(err.stack);
+      this.log.error(err.stack || err);
     });
   };
 
@@ -164,45 +185,49 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     this._isSuspended = false;
   };
 
-  this.getIsStarted = function() {
-    return this._isStarted;
-  };
+  Object.defineProperty(this, 'isStarted', {
+    get() {
+      return this._isStarted;
+    }
+  });
 
-  this.getLastSynchronizationDate = function() {
-    return this._lastSynchronizationDate;
-  };
+  Object.defineProperty(this, 'lastSynchronizationDate', {
+    get() {
+      return this._lastSynchronizationDate;
+    }
+  });
 
   this.run = function *(quietMode) {
-    var stats = {};
+    let stats = {};
     if (this._isRunning) return stats;
     if (this._isSuspended) return stats;
     if (this.authorizationIsRequired && !this.remoteRepository.getAuthorization()) {
       if (!quietMode) {
-        log.notice('an authorization is required to run the synchronizer');
+        this.log.notice('an authorization is required to run the synchronizer');
       }
       return stats;
     }
-    if (this.filterIsRequired && !this.getFilter()) {
+    if (this.filterIsRequired && !this.filter) {
       if (!quietMode) {
-        log.notice('a filter is required to run the synchronizer');
+        this.log.notice('a filter is required to run the synchronizer');
       }
       return stats;
     }
     if (this.connectivity.isOffline == null) yield this.connectivity.ping();
     if (this.connectivity.isOffline) {
       if (!quietMode) {
-        log.notice('a working connection is required to run the synchronizer');
+        this.log.notice('a working connection is required to run the synchronizer');
       }
       return stats;
     }
     try {
       this._isRunning = true;
-      var remoteRepositoryId = yield this.getRemoteRepositoryId();
-      var isFirstSynchronization = !remoteRepositoryId;
+      let remoteRepositoryId = yield this.getRemoteRepositoryId();
+      let isFirstSynchronization = !remoteRepositoryId;
       this.emit('willRun', isFirstSynchronization);
       yield this.initializeSynchronizer();
-      var localStats = yield this.receiveRemoteItems();
-      var remoteStats = yield this.sendLocalItems();
+      let localStats = yield this.receiveRemoteItems();
+      let remoteStats = yield this.sendLocalItems();
       stats = {
         updatedLocalItemsCount: localStats.updatedItemsCount,
         deletedLocalItemsCount: localStats.deletedItemsCount,
@@ -221,24 +246,23 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
   };
 
   this.receiveRemoteItems = function *() {
-    var result = yield this.getRemoteItems();
-    var stats = yield this.saveRemoteItemsInLocalRepository(result.items);
+    let result = yield this.getRemoteItems();
+    let stats = yield this.saveRemoteItemsInLocalRepository(result.items);
     yield this.setRemoteHistoryLastSequenceNumber(result.lastSequenceNumber);
     return stats;
   };
 
   this.getRemoteItems = function *() {
-    var sequenceNumber = yield this.getRemoteHistoryLastSequenceNumber();
-    var localRepositoryId = yield this.localRepository.getRepositoryId();
-    var options = {
+    let sequenceNumber = yield this.getRemoteHistoryLastSequenceNumber();
+    let localRepositoryId = yield this.localRepository.getRepositoryId();
+    let options = {
       ignoreOriginRepositoryId: localRepositoryId
     };
-    if (this.getFilter()) options.filter = this.getFilter();
-    this.emit('didProgress', { task: 'receivingRemoteHistory' });
-    var result = yield this.remoteRepository.history.findItemsAfterSequenceNumber(
+    if (this.filter) options.filter = this.filter;
+    let result = yield this.remoteRepository.history.findItemsAfterSequenceNumber(
       sequenceNumber, options
     );
-    var remoteRepositoryId = yield this.getRemoteRepositoryId();
+    let remoteRepositoryId = yield this.getRemoteRepositoryId();
     if (result.repositoryId !== remoteRepositoryId) {
       this.emit('remoteRepositoryIdDidChange');
       throw new Error('remote repositoryId did change');
@@ -247,39 +271,33 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
   };
 
   this.saveRemoteItemsInLocalRepository = function *(historyItems) {
-    var updatedItemsCount = 0;
-    var deletedItemsCount = 0;
+    let updatedItemsCount = 0;
+    let deletedItemsCount = 0;
 
-    var remoteRepositoryId = yield this.getRemoteRepositoryId();
+    let remoteRepositoryId = yield this.getRemoteRepositoryId();
 
-    var updatedItems = [];
-    var deletedItems = [];
-    historyItems.forEach(function(item) {
+    let updatedItems = [];
+    let deletedItems = [];
+    for (let item of historyItems) {
       if (!item.isDeleted) {
         updatedItems.push(item);
       } else {
         deletedItems.push(item);
       }
-    });
+    }
 
     // --- Save updated items ---
 
-    var remoteCollection = this.remoteRepository.createRootCollection();
-    var ids = _.pluck(updatedItems, 'primaryKey');
-    this.emit('didProgress', { task: 'receivingRemoteItems' });
-    var remoteItems = yield remoteCollection.getItems(ids, { errorIfMissing: false });
-    var cache = {};
-    var remoteItemsCount = remoteItems.length;
-    for (var i = 0; i < remoteItemsCount; i++) {
-      this.emit('didProgress', {
-        task: 'savingItemsInLocalRepository',
-        progress: i / remoteItemsCount
-      });
-      var remoteItem = remoteItems[i];
-      var className = remoteItem.getClassName();
-      var localCollection = this.localRepository.createCollectionFromItemClassName(className, cache);
-      localCollection.context = {};
-      var localItem = localCollection.unserializeItem(remoteItem);
+    let rootRemoteCollection = this.remoteRepository.createRootCollection();
+    let ids = _.pluck(updatedItems, 'primaryKey');
+    let remoteItems = yield rootRemoteCollection.getItems(ids, { errorIfMissing: false });
+    let cache = {};
+    let remoteItemsCount = remoteItems.length;
+    for (let i = 0; i < remoteItemsCount; i++) {
+      let remoteItem = remoteItems[i];
+      let className = remoteItem.class.name;
+      let localCollection = this.localRepository.createCollectionFromItemClassName(className, cache);
+      let localItem = localCollection.unserializeItem(remoteItem);
       localItem.isNew = false;
       yield localItem.save({
         createIfMissing: true,
@@ -291,35 +309,25 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
 
     // --- Remove deleted items ---
 
-    var localCollection = this.localRepository.createRootCollection();
-    localCollection.context = {};
-    var ids = _.pluck(deletedItems, 'primaryKey');
-    var idsCount = ids.length;
-    for (var i = 0; i < idsCount; i++) {
-      this.emit('didProgress', {
-        task: 'deletingItemsInLocalRepository',
-        progress: i / idsCount
-      });
+    let rootLocalCollection = this.localRepository.createRootCollection();
+    ids = _.pluck(deletedItems, 'primaryKey');
+    for (let id of ids) {
       // TODO: implement deleteItems() in kinda-repository and use it there
-      var id = ids[i];
-      var localItem = yield localCollection.getItem(id, { errorIfMissing: false });
+      let localItem = yield rootLocalCollection.getItem(id, { errorIfMissing: false });
       if (!localItem) continue;
-      var hasBeenDeleted = yield localItem.delete({
+      let hasBeenDeleted = yield localItem.delete({
         source: 'localSynchronizer',
         originRepositoryId: remoteRepositoryId
       });
       if (hasBeenDeleted) deletedItemsCount++;
     }
 
-    return {
-      updatedItemsCount: updatedItemsCount,
-      deletedItemsCount: deletedItemsCount
-    };
+    return { updatedItemsCount, deletedItemsCount };
   };
 
   this.sendLocalItems = function *() {
-    var result = yield this.getLocalItems();
-    var stats = yield this.saveLocalItemsInRemoteRepository(result.items);
+    let result = yield this.getLocalItems();
+    let stats = yield this.saveLocalItemsInRemoteRepository(result.items);
     yield this.localRepository.history.deleteItemsUntilSequenceNumber(
       result.lastSequenceNumber
     );
@@ -329,42 +337,34 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
   this.getLocalItems = function *() {
     this.emit('didProgress', { task: 'loadingLocalHistory' });
     return yield this.localRepository.history.findItemsAfterSequenceNumber();
-  }
+  };
 
   this.saveLocalItemsInRemoteRepository = function *(historyItems) {
-    var updatedItemsCount = 0;
-    var deletedItemsCount = 0;
+    let updatedItemsCount = 0;
+    let deletedItemsCount = 0;
 
-    var localRepositoryId = yield this.localRepository.getRepositoryId();
+    let localRepositoryId = yield this.localRepository.getRepositoryId();
 
-    var updatedItems = [];
-    var deletedItems = [];
-    historyItems.forEach(function(item) {
+    let updatedItems = [];
+    let deletedItems = [];
+    for (let item of historyItems) {
       if (!item.isDeleted) {
         updatedItems.push(item);
       } else {
         deletedItems.push(item);
       }
-    });
+    }
 
     // --- Save updated items ---
 
-    var localCollection = this.localRepository.createRootCollection();
-    localCollection.context = {};
-    var ids = _.pluck(updatedItems, 'primaryKey');
-    this.emit('didProgress', { task: 'loadingLocalItems' });
-    var localItems = yield localCollection.getItems(ids, { errorIfMissing: false });
-    var cache = {};
-    var localItemsCount = localItems.length;
-    for (var i = 0; i < localItemsCount; i++) {
-      this.emit('didProgress', {
-        task: 'savingItemsInRemoteRepository',
-        progress: i / localItemsCount
-      });
-      var localItem = localItems[i];
-      var className = localItem.getClassName();
-      var remoteCollection = this.remoteRepository.createCollectionFromItemClassName(className, cache);
-      var remoteItem = remoteCollection.unserializeItem(localItem);
+    let rootLocalCollection = this.localRepository.createRootCollection();
+    let ids = _.pluck(updatedItems, 'primaryKey');
+    let localItems = yield rootLocalCollection.getItems(ids, { errorIfMissing: false });
+    let cache = {};
+    for (let localItem of localItems) {
+      let className = localItem.class.name;
+      let remoteCollection = this.remoteRepository.createCollectionFromItemClassName(className, cache);
+      let remoteItem = remoteCollection.unserializeItem(localItem);
       remoteItem.isNew = false;
       yield remoteItem.save({
         createIfMissing: true,
@@ -376,17 +376,11 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
 
     // --- Remove deleted items ---
 
-    var remoteCollection = this.remoteRepository.createRootCollection();
-    var ids = _.pluck(deletedItems, 'primaryKey');
-    var idsCount = ids.length;
-    for (var i = 0; i < idsCount; i++) {
-      this.emit('didProgress', {
-        task: 'deletingItemsInRemoteRepository',
-        progress: i / idsCount
-      });
+    let rootRemoteCollection = this.remoteRepository.createRootCollection();
+    ids = _.pluck(deletedItems, 'primaryKey');
+    for (let id of ids) {
       // TODO: implement deleteItems() in kinda-repository and use it there
-      var id = ids[i];
-      var hasBeenDeleted = yield remoteCollection.deleteItem(id, {
+      let hasBeenDeleted = yield rootRemoteCollection.deleteItem(id, {
         errorIfMissing: false,
         source: 'remoteSynchronizer',
         originRepositoryId: localRepositoryId
@@ -394,11 +388,12 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
       if (hasBeenDeleted) deletedItemsCount++;
     }
 
-    return {
-      updatedItemsCount: updatedItemsCount,
-      deletedItemsCount: deletedItemsCount
-    };
+    return { updatedItemsCount, deletedItemsCount };
   };
 });
+
+KindaRepositorySynchronizer.LocalHistory = LocalHistory;
+KindaRepositorySynchronizer.RemoteHistory = RemoteHistory;
+KindaRepositorySynchronizer.HistoryServer = HistoryServer;
 
 module.exports = KindaRepositorySynchronizer;
