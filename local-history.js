@@ -1,6 +1,7 @@
 "use strict";
 
 var _ = require('lodash');
+var wait = require('co-wait');
 var KindaObject = require('kinda-object');
 
 var LocalHistory = KindaObject.extend('LocalHistory', function() {
@@ -47,13 +48,21 @@ var LocalHistory = KindaObject.extend('LocalHistory', function() {
 
   this.incrementSequenceNumber = function *(repository) {
     if (!repository) repository = this.repository;
-    var record = yield repository.loadRepositoryRecord();
-    if (!record.hasOwnProperty('lastHistorySequenceNumber')) {
-      record.lastHistorySequenceNumber = 0;
+    // This 'isIncrementingSequenceNumber' semaphore should not be necessary
+    // if the transaction system was better
+    while (this._isIncrementingSequenceNumber) yield wait(50);
+    try {
+      this._isIncrementingSequenceNumber = true;
+      var record = yield repository.loadRepositoryRecord();
+      if (!record.hasOwnProperty('lastHistorySequenceNumber')) {
+        record.lastHistorySequenceNumber = 0;
+      }
+      record.lastHistorySequenceNumber++;
+      yield repository.saveRepositoryRecord(record);
+      return record.lastHistorySequenceNumber;
+    } finally {
+      this._isIncrementingSequenceNumber = false;
     }
-    record.lastHistorySequenceNumber++;
-    yield repository.saveRepositoryRecord(record);
-    return record.lastHistorySequenceNumber;
   };
 
   this.updateItem = function *(repository, item, operation, options) {
