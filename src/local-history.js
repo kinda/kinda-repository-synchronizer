@@ -89,7 +89,7 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
         oldSequenceNumberIndexKey, { errorIfMissing: false }
       );
       if (!hasBeenDeleted) {
-        repository.log.warning('in the local repository history, a sequence number index was not found while trying to delete it');
+        repository.log.warning('in the local repository history, a sequence number index was not found while trying to delete it (updateItem)');
       }
     }
 
@@ -101,7 +101,7 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
           primaryKeyIndexKey, { errorIfMissing: false }
         );
         if (!hasBeenDeleted) {
-          repository.log.warning('in the local repository history, a primary key index was not found while trying to delete it');
+          repository.log.warning('in the local repository history, a primary key index was not found while trying to delete it (updateItem)');
         }
       }
       return;
@@ -129,7 +129,7 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
       yield store.put(newSequenceNumberIndexKey, value, { errorIfExists: true });
     } catch (err) {
       repository.log.error(err);
-      repository.log.warning('in the local repository history, an error occured while trying to put a new sequence number index');
+      repository.log.warning('in the local repository history, an error occured while trying to put a new sequence number index (updateItem)');
     }
   };
 
@@ -187,7 +187,12 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
       return this.makePrimaryKeyIndexKey(result.value.primaryKey);
     });
     for (let primaryKeyIndexKey of primaryKeyIndexKeys) {
-      yield store.del(primaryKeyIndexKey);
+      let hasBeenDeleted = yield store.del(
+        primaryKeyIndexKey, { errorIfMissing: false }
+      );
+      if (!hasBeenDeleted) {
+        this.repository.log.warning('in the local repository history, a primary key index was not found while trying to delete it (deleteItemsUntilSequenceNumber)');
+      }
     }
     yield store.delRange({
       prefix: this.sequenceNumberIndexPrefix,
