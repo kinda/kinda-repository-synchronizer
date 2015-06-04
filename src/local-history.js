@@ -85,18 +85,23 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
     if (primaryKeyIndexValue) { // remove previous item
       let oldSequenceNumber = primaryKeyIndexValue.sequenceNumber;
       let oldSequenceNumberIndexKey = this.makeSequenceNumberIndexKey(oldSequenceNumber);
-      yield store.del(oldSequenceNumberIndexKey);
+      let hasBeenDeleted = yield store.del(
+        oldSequenceNumberIndexKey, { errorIfMissing: false }
+      );
+      if (!hasBeenDeleted) {
+        repository.log.warning('in the local repository history, a sequence number index was not found while trying to delete it');
+      }
     }
 
     if (options.source === 'localSynchronizer') {
       // in case the item comes from the local synchronizer
       // we must remove it from the local history
       if (primaryKeyIndexValue) {
-        var hasBeenDeleted = yield store.del(
+        let hasBeenDeleted = yield store.del(
           primaryKeyIndexKey, { errorIfMissing: false }
         );
         if (!hasBeenDeleted) {
-          log.warning('in the local repository history, a primary key index was not found while trying to delete it (updateItem)');
+          repository.log.warning('in the local repository history, a primary key index was not found while trying to delete it');
         }
       }
       return;
@@ -123,8 +128,8 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
     try {
       yield store.put(newSequenceNumberIndexKey, value, { errorIfExists: true });
     } catch (err) {
-      log.error(err);
-      log.warning('in the local repository history, an error occured while trying to put a new sequence number index (updateItem)');
+      repository.log.error(err);
+      repository.log.warning('in the local repository history, an error occured while trying to put a new sequence number index');
     }
   };
 

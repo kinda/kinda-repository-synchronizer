@@ -43,7 +43,11 @@ let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     );
 
     let log = options.log;
-    if (!KindaLog.isClassOf(log)) log = KindaLog.create(log);
+    if (log) {
+      if (!KindaLog.isClassOf(log)) log = KindaLog.create(log);
+    } else {
+      log = this.localRepository.log;
+    }
     this.log = log;
 
     let connectivity = options.connectivity;
