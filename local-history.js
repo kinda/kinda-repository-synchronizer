@@ -98,7 +98,7 @@ var LocalHistory = KindaObject.extend('LocalHistory', function() {
         oldSequenceNumberIndexKey, { errorIfMissing: false }
       );
       if (!hasBeenDeleted) {
-        log.warning('in the local repository history, a sequence number index was not found while trying to delete it');
+        log.warning('in the local repository history, a sequence number index was not found while trying to delete it (updateItem)');
       }
     }
 
@@ -110,7 +110,7 @@ var LocalHistory = KindaObject.extend('LocalHistory', function() {
           primaryKeyIndexKey, { errorIfMissing: false }
         );
         if (!hasBeenDeleted) {
-          log.warning('in the local repository history, a primary key index was not found while trying to delete it');
+          log.warning('in the local repository history, a primary key index was not found while trying to delete it (updateItem)');
         }
       }
       return;
@@ -138,7 +138,7 @@ var LocalHistory = KindaObject.extend('LocalHistory', function() {
       yield store.put(newSequenceNumberIndexKey, value, { errorIfExists: true });
     } catch (err) {
       log.error(err);
-      log.warning('in the local repository history, an error occured while trying to put a new sequence number index');
+      log.warning('in the local repository history, an error occured while trying to put a new sequence number index (updateItem)');
     }
   };
 
@@ -204,7 +204,12 @@ var LocalHistory = KindaObject.extend('LocalHistory', function() {
     for (var i = 0; i < primaryKeyIndexKeys.length; i++) {
       // TODO: implement delMany in the store and use it here
       var primaryKeyIndexKey = primaryKeyIndexKeys[i];
-      yield store.del(primaryKeyIndexKey);
+      var hasBeenDeleted = yield store.del(
+        primaryKeyIndexKey, { errorIfMissing: false }
+      );
+      if (!hasBeenDeleted) {
+        log.warning('in the local repository history, a primary key index was not found while trying to delete it (deleteItemsUntilSequenceNumber)');
+      }
     }
     yield store.delRange({
       prefix: this.sequenceNumberIndexPrefix,
