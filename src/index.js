@@ -263,6 +263,7 @@ let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
       ignoreOriginRepositoryId: localRepositoryId
     };
     if (this.filter) options.filter = this.filter;
+    this.emit('didProgress', { task: 'receivingRemoteHistory' });
     let result = yield this.remoteRepository.history.findItemsAfterSequenceNumber(
       sequenceNumber, options
     );
@@ -294,11 +295,16 @@ let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
 
     let rootRemoteCollection = this.remoteRepository.createRootCollection();
     let ids = _.pluck(updatedItems, 'primaryKey');
+    this.emit('didProgress', { task: 'receivingRemoteItems' });
     let remoteItems = yield rootRemoteCollection.getItems(ids, { errorIfMissing: false });
     let cache = {};
-    let remoteItemsCount = remoteItems.length;
-    for (let i = 0; i < remoteItemsCount; i++) {
-      let remoteItem = remoteItems[i];
+    let progressCount = 0;
+    let progressTotal = remoteItems.length;
+    for (let remoteItem of remoteItems) {
+      this.emit('didProgress', {
+        task: 'savingItemsInLocalRepository',
+        progress: progressCount / progressTotal
+      });
       let className = remoteItem.class.name;
       let localCollection = this.localRepository.createCollectionFromItemClassName(className, cache);
       let localItem = localCollection.unserializeItem(remoteItem);
@@ -309,14 +315,21 @@ let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
         originRepositoryId: remoteRepositoryId
       });
       updatedItemsCount++;
+      progressCount++;
     }
 
     // --- Remove deleted items ---
 
     let rootLocalCollection = this.localRepository.createRootCollection();
     ids = _.pluck(deletedItems, 'primaryKey');
+    progressCount = 0;
+    progressTotal = ids.length;
     for (let id of ids) {
       // TODO: implement deleteItems() in kinda-repository and use it there
+      this.emit('didProgress', {
+        task: 'deletingItemsInLocalRepository',
+        progress: progressCount / progressTotal
+      });
       let localItem = yield rootLocalCollection.getItem(id, { errorIfMissing: false });
       if (!localItem) continue;
       let hasBeenDeleted = yield localItem.delete({
@@ -324,6 +337,7 @@ let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
         originRepositoryId: remoteRepositoryId
       });
       if (hasBeenDeleted) deletedItemsCount++;
+      progressCount++;
     }
 
     return { updatedItemsCount, deletedItemsCount };
@@ -363,9 +377,16 @@ let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
 
     let rootLocalCollection = this.localRepository.createRootCollection();
     let ids = _.pluck(updatedItems, 'primaryKey');
+    this.emit('didProgress', { task: 'loadingLocalItems' });
     let localItems = yield rootLocalCollection.getItems(ids, { errorIfMissing: false });
     let cache = {};
+    let progressCount = 0;
+    let progressTotal = localItems.length;
     for (let localItem of localItems) {
+      this.emit('didProgress', {
+        task: 'savingItemsInRemoteRepository',
+        progress: progressCount / progressTotal
+      });
       let className = localItem.class.name;
       let remoteCollection = this.remoteRepository.createCollectionFromItemClassName(className, cache);
       let remoteItem = remoteCollection.unserializeItem(localItem);
@@ -376,20 +397,28 @@ let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
         originRepositoryId: localRepositoryId
       });
       updatedItemsCount++;
+      progressCount++;
     }
 
     // --- Remove deleted items ---
 
     let rootRemoteCollection = this.remoteRepository.createRootCollection();
     ids = _.pluck(deletedItems, 'primaryKey');
+    progressCount = 0;
+    progressTotal = ids.length;
     for (let id of ids) {
       // TODO: implement deleteItems() in kinda-repository and use it there
+      this.emit('didProgress', {
+        task: 'deletingItemsInRemoteRepository',
+        progress: progressCount / progressTotal
+      });
       let hasBeenDeleted = yield rootRemoteCollection.deleteItem(id, {
         errorIfMissing: false,
         source: 'remoteSynchronizer',
         originRepositoryId: localRepositoryId
       });
       if (hasBeenDeleted) deletedItemsCount++;
+      progressCount++;
     }
 
     return { updatedItemsCount, deletedItemsCount };
