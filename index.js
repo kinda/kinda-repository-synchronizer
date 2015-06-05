@@ -234,6 +234,7 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
       ignoreOriginRepositoryId: localRepositoryId
     };
     if (this.getFilter()) options.filter = this.getFilter();
+    this.emit('didProgress', { task: 'receivingRemoteHistory' });
     var result = yield this.remoteRepository.history.findItemsAfterSequenceNumber(
       sequenceNumber, options
     );
@@ -265,10 +266,15 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
 
     var remoteCollection = this.remoteRepository.createRootCollection();
     var ids = _.pluck(updatedItems, 'primaryKey');
+    this.emit('didProgress', { task: 'receivingRemoteItems' });
     var remoteItems = yield remoteCollection.getItems(ids, { errorIfMissing: false });
     var cache = {};
     var remoteItemsCount = remoteItems.length;
     for (var i = 0; i < remoteItemsCount; i++) {
+      this.emit('didProgress', {
+        task: 'savingItemsInLocalRepository',
+        progress: i / remoteItemsCount
+      });
       var remoteItem = remoteItems[i];
       var className = remoteItem.getClassName();
       var localCollection = this.localRepository.createCollectionFromItemClassName(className, cache);
@@ -281,7 +287,6 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
         originRepositoryId: remoteRepositoryId
       });
       updatedItemsCount++;
-      this.emit('didProgress', i / remoteItemsCount);
     }
 
     // --- Remove deleted items ---
@@ -289,7 +294,12 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     var localCollection = this.localRepository.createRootCollection();
     localCollection.context = {};
     var ids = _.pluck(deletedItems, 'primaryKey');
-    for (var i = 0; i < ids.length; i++) {
+    var idsCount = ids.length;
+    for (var i = 0; i < idsCount; i++) {
+      this.emit('didProgress', {
+        task: 'deletingItemsInLocalRepository',
+        progress: i / idsCount
+      });
       // TODO: implement deleteItems() in kinda-repository and use it there
       var id = ids[i];
       var localItem = yield localCollection.getItem(id, { errorIfMissing: false });
@@ -317,6 +327,7 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
   };
 
   this.getLocalItems = function *() {
+    this.emit('didProgress', { task: 'loadingLocalHistory' });
     return yield this.localRepository.history.findItemsAfterSequenceNumber();
   }
 
@@ -341,9 +352,15 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     var localCollection = this.localRepository.createRootCollection();
     localCollection.context = {};
     var ids = _.pluck(updatedItems, 'primaryKey');
+    this.emit('didProgress', { task: 'loadingLocalItems' });
     var localItems = yield localCollection.getItems(ids, { errorIfMissing: false });
     var cache = {};
-    for (var i = 0; i < localItems.length; i++) {
+    var localItemsCount = localItems.length;
+    for (var i = 0; i < localItemsCount; i++) {
+      this.emit('didProgress', {
+        task: 'savingItemsInRemoteRepository',
+        progress: i / localItemsCount
+      });
       var localItem = localItems[i];
       var className = localItem.getClassName();
       var remoteCollection = this.remoteRepository.createCollectionFromItemClassName(className, cache);
@@ -361,7 +378,12 @@ var KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
 
     var remoteCollection = this.remoteRepository.createRootCollection();
     var ids = _.pluck(deletedItems, 'primaryKey');
-    for (var i = 0; i < ids.length; i++) {
+    var idsCount = ids.length;
+    for (var i = 0; i < idsCount; i++) {
+      this.emit('didProgress', {
+        task: 'deletingItemsInRemoteRepository',
+        progress: i / idsCount
+      });
       // TODO: implement deleteItems() in kinda-repository and use it there
       var id = ids[i];
       var hasBeenDeleted = yield remoteCollection.deleteItem(id, {
