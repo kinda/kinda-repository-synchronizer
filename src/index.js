@@ -227,8 +227,8 @@ let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     try {
       this._isRunning = true;
       let remoteRepositoryId = yield this.getRemoteRepositoryId();
-      let isFirstSynchronization = !remoteRepositoryId;
-      this.emit('willRun', isFirstSynchronization);
+      let info = { isFirstSynchronization: !remoteRepositoryId };
+      this.emit('willRun', info);
       yield this.initializeSynchronizer();
       let localStats = yield this.receiveRemoteItems();
       let remoteStats = yield this.sendLocalItems();
