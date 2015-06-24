@@ -205,7 +205,7 @@ let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     let stats = {};
     if (this._isRunning) return stats;
     if (this._isSuspended) return stats;
-    if (this.authorizationIsRequired && !this.remoteRepository.getAuthorization()) {
+    if (this.authorizationIsRequired && !this.remoteRepository.authorization) {
       if (!quietMode) {
         this.log.notice('an authorization is required to run the synchronizer');
       }
