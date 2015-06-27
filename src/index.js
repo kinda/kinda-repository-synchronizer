@@ -85,6 +85,15 @@ let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     }
   });
 
+  Object.defineProperty(this, 'throttlingTime', {
+    get() {
+      return this._throttlingTime;
+    },
+    set(throttlingTime) {
+      this._throttlingTime = throttlingTime;
+    }
+  });
+
   this.getRemoteRepositoryId = function *() {
     if (this._remoteRepositoryId) return this._remoteRepositoryId;
     let record = yield this.localRepository.loadRepositoryRecord();
@@ -306,6 +315,7 @@ let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     let progressCount = 0;
     let progressTotal = remoteItems.length;
     for (let remoteItem of remoteItems) {
+      if (this.throttlingTime) yield wait(this.throttlingTime);
       this.emit('didProgress', {
         task: 'savingItemsInLocalRepository',
         progress: progressCount / progressTotal
@@ -330,6 +340,7 @@ let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     progressCount = 0;
     progressTotal = ids.length;
     for (let id of ids) {
+      if (this.throttlingTime) yield wait(this.throttlingTime);
       // TODO: implement deleteItems() in kinda-repository and use it there
       this.emit('didProgress', {
         task: 'deletingItemsInLocalRepository',
@@ -388,6 +399,7 @@ let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     let progressCount = 0;
     let progressTotal = localItems.length;
     for (let localItem of localItems) {
+      if (this.throttlingTime) yield wait(this.throttlingTime);
       this.emit('didProgress', {
         task: 'savingItemsInRemoteRepository',
         progress: progressCount / progressTotal
@@ -412,6 +424,7 @@ let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
     progressCount = 0;
     progressTotal = ids.length;
     for (let id of ids) {
+      if (this.throttlingTime) yield wait(this.throttlingTime);
       // TODO: implement deleteItems() in kinda-repository and use it there
       this.emit('didProgress', {
         task: 'deletingItemsInRemoteRepository',
