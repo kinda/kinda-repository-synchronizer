@@ -95,9 +95,11 @@ let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
   };
 
   this.setRemoteRepositoryId = function *(remoteRepositoryId) {
-    let record = yield this.localRepository.loadRepositoryRecord();
-    record.remoteRepositoryId = remoteRepositoryId;
-    yield this.localRepository.saveRepositoryRecord(record);
+    yield this.localRepository.transaction(function *(repository) {
+      let record = yield repository.loadRepositoryRecord();
+      record.remoteRepositoryId = remoteRepositoryId;
+      yield repository.saveRepositoryRecord(record);
+    });
     this._remoteRepositoryId = remoteRepositoryId;
   };
 
@@ -113,9 +115,12 @@ let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
   };
 
   this.setRemoteHistoryLastSequenceNumber = function *(sequenceNumber) {
-    let record = yield this.localRepository.loadRepositoryRecord();
-    record.remoteHistoryLastSequenceNumber = sequenceNumber;
-    yield this.localRepository.saveRepositoryRecord(record);
+    if (this._remoteHistoryLastSequenceNumber === sequenceNumber) return;
+    yield this.localRepository.transaction(function *(repository) {
+      let record = yield repository.loadRepositoryRecord();
+      record.remoteHistoryLastSequenceNumber = sequenceNumber;
+      yield repository.saveRepositoryRecord(record);
+    });
     this._remoteHistoryLastSequenceNumber = sequenceNumber;
   };
 
