@@ -8,22 +8,22 @@ let RemoteHistory = KindaObject.extend('RemoteHistory', function() {
     repository.history = this;
   };
 
-  this.getLastSequenceNumber = function *() {
+  this.getLastSequenceNumber = async function() {
     let url = this.repository.makeURL('history');
     let params = { method: 'GET', url, json: true };
     this.repository.writeAuthorization(params);
-    let res = yield this.repository.httpClient.request(params);
+    let res = await this.repository.httpClient.request(params);
     if (res.statusCode !== 200) throw this.repository.createError(res);
     return res.body;
   };
 
-  this.findItemsAfterSequenceNumber = function *(sequenceNumber = 0, options = {}) {
+  this.findItemsAfterSequenceNumber = async function(sequenceNumber = 0, options = {}) {
     options.order = ['sequenceNumber'];
     options.startAfter = sequenceNumber;
     let url = this.repository.makeURL('history-items', undefined, undefined, options);
     let params = { method: 'GET', url, json: true };
     this.repository.writeAuthorization(params);
-    let res = yield this.repository.httpClient.request(params);
+    let res = await this.repository.httpClient.request(params);
     if (res.statusCode !== 200) throw this.repository.createError(res);
     return res.body;
   };

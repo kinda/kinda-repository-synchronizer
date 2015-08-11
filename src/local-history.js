@@ -23,35 +23,35 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
     that.primaryKeyIndexPrefix = [repository.name, '$History:primaryKey'];
     that.sequenceNumberIndexPrefix = [repository.name, '$History:sequenceNumber'];
 
-    repository.onAsync('didPutItem', function *(item, options) {
-      yield that.updateItem(item, 'put', options);
+    repository.on('didPutItem', async function(item, options) {
+      await that.updateItem(item, 'put', options);
     });
 
-    repository.onAsync('didDeleteItem', function *(item, options) {
-      yield that.updateItem(item, 'delete', options);
+    repository.on('didDeleteItem', async function(item, options) {
+      await that.updateItem(item, 'delete', options);
     });
   };
 
-  this.getLastSequenceNumber = function *(repository = this.repository) {
-    let repositoryId = yield repository.getRepositoryId();
-    let record = yield repository.loadRepositoryRecord();
+  this.getLastSequenceNumber = async function(repository = this.repository) {
+    let repositoryId = await repository.getRepositoryId();
+    let record = await repository.loadRepositoryRecord();
     let lastSequenceNumber = record.lastHistorySequenceNumber || 0;
     return { repositoryId, lastSequenceNumber };
   };
 
-  this.incrementSequenceNumber = function *(repository = this.repository) {
-    return yield repository.transaction(function *(repo) {
-      let record = yield repo.loadRepositoryRecord();
+  this.incrementSequenceNumber = async function(repository = this.repository) {
+    return await repository.transaction(async function(repo) {
+      let record = await repo.loadRepositoryRecord();
       if (!record.hasOwnProperty('lastHistorySequenceNumber')) {
         record.lastHistorySequenceNumber = 0;
       }
       record.lastHistorySequenceNumber++;
-      yield repo.saveRepositoryRecord(record);
+      await repo.saveRepositoryRecord(record);
       return record.lastHistorySequenceNumber;
     });
   };
 
-  this.updateItem = function *(item, operation, options = {}) {
+  this.updateItem = async function(item, operation, options = {}) {
     let collectionName = item.collection.class.name;
     if (_.includes(this.excludedCollections, collectionName)) return;
 
@@ -63,7 +63,7 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
       throw new Error('current repository should be inside a transaction');
     }
 
-    let repositoryId = yield repository.getRepositoryId();
+    let repositoryId = await repository.getRepositoryId();
     let originRepositoryId = options.originRepositoryId || repositoryId;
 
     let store = repository.store;
@@ -71,14 +71,14 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
     let primaryKey = item.primaryKeyValue;
     let primaryKeyIndexKey = this.makePrimaryKeyIndexKey(primaryKey);
 
-    let primaryKeyIndexValue = yield store.get(
+    let primaryKeyIndexValue = await store.get(
       primaryKeyIndexKey, { errorIfMissing: false }
     );
 
     if (primaryKeyIndexValue) { // remove previous item
       let oldSequenceNumber = primaryKeyIndexValue.sequenceNumber;
       let oldSequenceNumberIndexKey = this.makeSequenceNumberIndexKey(oldSequenceNumber);
-      let hasBeenDeleted = yield store.del(
+      let hasBeenDeleted = await store.del(
         oldSequenceNumberIndexKey, { errorIfMissing: false }
       );
       if (!hasBeenDeleted) {
@@ -90,7 +90,7 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
       // in case the item comes from the local synchronizer
       // we must remove it from the local history
       if (primaryKeyIndexValue) {
-        let hasBeenDeleted = yield store.del(
+        let hasBeenDeleted = await store.del(
           primaryKeyIndexKey, { errorIfMissing: false }
         );
         if (!hasBeenDeleted) {
@@ -100,11 +100,11 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
       return;
     }
 
-    let newSequenceNumber = yield this.incrementSequenceNumber(repository);
+    let newSequenceNumber = await this.incrementSequenceNumber(repository);
 
     // update primaryKey index
     primaryKeyIndexValue = { sequenceNumber: newSequenceNumber };
-    yield store.put(primaryKeyIndexKey, primaryKeyIndexValue);
+    await store.put(primaryKeyIndexKey, primaryKeyIndexValue);
 
     // update sequenceNumber index
     let newSequenceNumberIndexKey = this.makeSequenceNumberIndexKey(newSequenceNumber);
@@ -119,20 +119,20 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
       }
     });
     try {
-      yield store.put(newSequenceNumberIndexKey, value, { errorIfExists: true });
+      await store.put(newSequenceNumberIndexKey, value, { errorIfExists: true });
     } catch (err) {
       repository.log.error(err);
       repository.log.warning('in the local repository history, an error occured while trying to put a new sequence number index (updateItem)');
     }
   };
 
-  this.findItemsAfterSequenceNumber = function *(sequenceNumber = 0, options = {}) {
-    let result = yield this.getLastSequenceNumber(this.repository);
+  this.findItemsAfterSequenceNumber = async function(sequenceNumber = 0, options = {}) {
+    let result = await this.getLastSequenceNumber(this.repository);
     let lastSequenceNumber = result.lastSequenceNumber;
     let items = [];
     if (lastSequenceNumber > sequenceNumber) { // OPTIMIZATION
       let store = this.repository.store;
-      let results = yield store.getRange({
+      let results = await store.getRange({
         prefix: this.sequenceNumberIndexPrefix,
         startAfter: sequenceNumber,
         end: lastSequenceNumber,
@@ -165,13 +165,13 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
         items.push(_.omit(value, 'projection'));
       });
     }
-    let repositoryId = yield this.repository.getRepositoryId();
+    let repositoryId = await this.repository.getRepositoryId();
     return { repositoryId, lastSequenceNumber, items };
   };
 
-  this.deleteItemsUntilSequenceNumber = function *(sequenceNumber) {
+  this.deleteItemsUntilSequenceNumber = async function(sequenceNumber) {
     let store = this.repository.store;
-    let results = yield store.getRange({
+    let results = await store.getRange({
       prefix: this.sequenceNumberIndexPrefix,
       end: sequenceNumber,
       limit: 100000 // TODO: make it work for an unlimited number of items
@@ -180,27 +180,27 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
       return this.makePrimaryKeyIndexKey(result.value.primaryKey);
     });
     for (let primaryKeyIndexKey of primaryKeyIndexKeys) {
-      let hasBeenDeleted = yield store.del(
+      let hasBeenDeleted = await store.del(
         primaryKeyIndexKey, { errorIfMissing: false }
       );
       if (!hasBeenDeleted) {
         this.repository.log.warning('in the local repository history, a primary key index was not found while trying to delete it (deleteItemsUntilSequenceNumber)');
       }
     }
-    yield store.delRange({
+    await store.delRange({
       prefix: this.sequenceNumberIndexPrefix,
       end: sequenceNumber
     });
   };
 
-  this.getStatistics = function *() {
-    let result = yield this.getLastSequenceNumber();
+  this.getStatistics = async function() {
+    let result = await this.getLastSequenceNumber();
     let lastSequenceNumber = result.lastSequenceNumber;
     let store = this.repository.store;
-    let primaryKeyIndexesCount = yield store.getCount({
+    let primaryKeyIndexesCount = await store.getCount({
       prefix: this.primaryKeyIndexPrefix
     });
-    let sequenceNumberIndexesCount = yield store.getCount({
+    let sequenceNumberIndexesCount = await store.getCount({
       prefix: this.sequenceNumberIndexPrefix
     });
     return {
@@ -210,17 +210,17 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
     };
   };
 
-  this.forgetDeletedItems = function *() {
+  this.forgetDeletedItems = async function() {
     let store = this.repository.store;
-    let results = yield store.getRange({
+    let results = await store.getRange({
       prefix: this.sequenceNumberIndexPrefix,
       limit: 100000 // TODO: implement forEach in the store and use it here
     });
     for (let result of results) {
       if (result.value.isDeleted) {
-        yield store.del(result.key);
+        await store.del(result.key);
         let primaryKeyIndexKey = this.makePrimaryKeyIndexKey(result.value.primaryKey);
-        yield store.del(primaryKeyIndexKey);
+        await store.del(primaryKeyIndexKey);
       }
     }
   };

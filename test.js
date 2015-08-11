@@ -1,7 +1,6 @@
 'use strict';
 
 let http = require('http');
-require('co-mocha');
 let assert = require('chai').assert;
 let koa = require('koa');
 let log = require('kinda-log').create();
@@ -19,7 +18,7 @@ suite('KindaRepositorySynchronizer', function() {
   let frontendPeople, backendPeople;
   let synchronizer, httpServer;
 
-  suiteSetup(function *() {
+  suiteSetup(async function() {
     let serverPort = 8888;
 
     let Elements = Collection.extend('Elements', function() {
@@ -80,32 +79,36 @@ suite('KindaRepositorySynchronizer', function() {
     server.use(log.getLoggerMiddleware());
     server.use(repositoryServer.getMiddleware());
     httpServer = http.createServer(server.callback());
-    yield function(cb) {
-      httpServer.listen(serverPort, cb);
-    };
+    await new Promise((resolve, reject) => {
+      httpServer.listen(serverPort, function(err, res) {
+        if (err) reject(err); else resolve(res);
+      });
+    });
 
     // fix an issue when mocha runs in watch mode:
-    yield synchronizer.connectivity.ping();
+    await synchronizer.connectivity.ping();
   });
 
-  suiteTeardown(function *() {
-    yield function(cb) {
-      httpServer.close(cb);
-    };
-    yield frontentLocalRepository.destroyRepository();
-    yield backendRepository.destroyRepository();
+  suiteTeardown(async function() {
+    await new Promise((resolve, reject) => {
+      httpServer.close(function(err, res) {
+        if (err) reject(err); else resolve(res);
+      });
+    });
+    await frontentLocalRepository.destroyRepository();
+    await backendRepository.destroyRepository();
   });
 
-  test('test frontend local history', function *() {
-    let repositoryId = yield frontentLocalRepository.getRepositoryId();
+  test('test frontend local history', async function() {
+    let repositoryId = await frontentLocalRepository.getRepositoryId();
     assert.ok(repositoryId);
 
     let history = frontentLocalRepository.history;
 
-    let result = yield history.getLastSequenceNumber();
+    let result = await history.getLastSequenceNumber();
     let initialLastSequenceNumber = result.lastSequenceNumber;
 
-    result = yield history.findItemsAfterSequenceNumber();
+    result = await history.findItemsAfterSequenceNumber();
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber);
     assert.strictEqual(result.items.length, 0);
 
@@ -114,101 +117,101 @@ suite('KindaRepositorySynchronizer', function() {
       firstName: 'Manuel',
       lastName: 'Vila'
     });
-    yield person1.save();
+    await person1.save();
 
     let person2 = frontendPeople.createItem({
       tenantId: 'ghijkl',
       firstName: 'Jack',
       lastName: 'Daniel'
     });
-    yield person2.save();
+    await person2.save();
 
-    result = yield history.findItemsAfterSequenceNumber();
+    result = await history.findItemsAfterSequenceNumber();
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 2);
     assert.strictEqual(result.items.length, 2);
     assert.strictEqual(result.items[0].primaryKey, person1.id);
     assert.strictEqual(result.items[1].primaryKey, person2.id);
 
-    result = yield history.findItemsAfterSequenceNumber(initialLastSequenceNumber + 2);
+    result = await history.findItemsAfterSequenceNumber(initialLastSequenceNumber + 2);
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 2);
     assert.strictEqual(result.items.length, 0);
 
-    result = yield history.findItemsAfterSequenceNumber(
+    result = await history.findItemsAfterSequenceNumber(
       initialLastSequenceNumber, { filter: { tenantId: 'abcdef' } }
     );
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 2);
     assert.strictEqual(result.items.length, 1);
     assert.strictEqual(result.items[0].primaryKey, person1.id);
 
-    result = yield history.findItemsAfterSequenceNumber(
+    result = await history.findItemsAfterSequenceNumber(
       initialLastSequenceNumber, { filter: { tenantId: 'ghijkl' } }
     );
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 2);
     assert.strictEqual(result.items.length, 1);
     assert.strictEqual(result.items[0].primaryKey, person2.id);
 
-    let stats = yield history.getStatistics();
+    let stats = await history.getStatistics();
     assert.strictEqual(stats.primaryKeyIndexesCount, 2);
     assert.strictEqual(stats.sequenceNumberIndexesCount, 2);
 
-    yield person1.delete();
+    await person1.delete();
 
-    result = yield history.findItemsAfterSequenceNumber();
+    result = await history.findItemsAfterSequenceNumber();
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 3);
     assert.strictEqual(result.items.length, 2);
     assert.strictEqual(result.items[0].primaryKey, person2.id);
     assert.strictEqual(result.items[1].primaryKey, person1.id);
     assert.isTrue(result.items[1].isDeleted);
 
-    stats = yield history.getStatistics();
+    stats = await history.getStatistics();
     assert.strictEqual(stats.primaryKeyIndexesCount, 2);
     assert.strictEqual(stats.sequenceNumberIndexesCount, 2);
 
-    yield history.forgetDeletedItems();
+    await history.forgetDeletedItems();
 
-    stats = yield history.getStatistics();
+    stats = await history.getStatistics();
     assert.strictEqual(stats.primaryKeyIndexesCount, 1);
     assert.strictEqual(stats.sequenceNumberIndexesCount, 1);
 
-    result = yield history.findItemsAfterSequenceNumber();
+    result = await history.findItemsAfterSequenceNumber();
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 3);
     assert.strictEqual(result.items.length, 1);
     assert.strictEqual(result.items[0].primaryKey, person2.id);
 
-    yield person2.delete();
+    await person2.delete();
 
-    result = yield history.findItemsAfterSequenceNumber();
+    result = await history.findItemsAfterSequenceNumber();
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 4);
     assert.strictEqual(result.items.length, 1);
     assert.strictEqual(result.items[0].primaryKey, person2.id);
     assert.isTrue(result.items[0].isDeleted);
 
-    stats = yield history.getStatistics();
+    stats = await history.getStatistics();
     assert.strictEqual(stats.primaryKeyIndexesCount, 1);
     assert.strictEqual(stats.sequenceNumberIndexesCount, 1);
 
-    yield history.forgetDeletedItems();
+    await history.forgetDeletedItems();
 
-    stats = yield history.getStatistics();
+    stats = await history.getStatistics();
     assert.strictEqual(stats.primaryKeyIndexesCount, 0);
     assert.strictEqual(stats.sequenceNumberIndexesCount, 0);
   });
 
-  test('test frontend remote history', function *() {
-    let repositoryId = yield backendRepository.getRepositoryId();
-    let remoteRepositoryId = yield frontentRemoteRepository.getRepositoryId();
+  test('test frontend remote history', async function() {
+    let repositoryId = await backendRepository.getRepositoryId();
+    let remoteRepositoryId = await frontentRemoteRepository.getRepositoryId();
     assert.ok(remoteRepositoryId);
     assert.strictEqual(remoteRepositoryId, repositoryId);
 
     let history = frontentRemoteRepository.history;
 
-    let result = yield history.getLastSequenceNumber();
+    let result = await history.getLastSequenceNumber();
     assert.ok(result.repositoryId);
     assert.strictEqual(result.repositoryId, repositoryId);
     let initialLastSequenceNumber = result.lastSequenceNumber;
     assert.isNumber(initialLastSequenceNumber);
 
-    result = yield history.findItemsAfterSequenceNumber();
+    result = await history.findItemsAfterSequenceNumber();
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber);
     assert.strictEqual(result.items.length, 0);
 
@@ -217,16 +220,16 @@ suite('KindaRepositorySynchronizer', function() {
       firstName: 'Manuel',
       lastName: 'Vila'
     });
-    yield person1.save();
+    await person1.save();
 
     let person2 = backendPeople.createItem({
       tenantId: 'ghijkl',
       firstName: 'Jack',
       lastName: 'Daniel'
     });
-    yield person2.save({ originRepositoryId: 'a1b2c3' });
+    await person2.save({ originRepositoryId: 'a1b2c3' });
 
-    result = yield history.findItemsAfterSequenceNumber();
+    result = await history.findItemsAfterSequenceNumber();
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 2);
     assert.strictEqual(result.items.length, 2);
     assert.strictEqual(result.items[0].primaryKey, person1.id);
@@ -234,41 +237,41 @@ suite('KindaRepositorySynchronizer', function() {
     assert.strictEqual(result.items[1].primaryKey, person2.id);
     assert.strictEqual(result.items[1].originRepositoryId, 'a1b2c3');
 
-    result = yield history.findItemsAfterSequenceNumber(initialLastSequenceNumber + 2);
+    result = await history.findItemsAfterSequenceNumber(initialLastSequenceNumber + 2);
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 2);
     assert.strictEqual(result.items.length, 0);
 
-    result = yield history.findItemsAfterSequenceNumber(
+    result = await history.findItemsAfterSequenceNumber(
       initialLastSequenceNumber, { ignoreOriginRepositoryId: 'a1b2c3' }
     );
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 2);
     assert.strictEqual(result.items.length, 1);
     assert.strictEqual(result.items[0].primaryKey, person1.id);
 
-    result = yield history.findItemsAfterSequenceNumber(
+    result = await history.findItemsAfterSequenceNumber(
       initialLastSequenceNumber, { filter: { tenantId: 'abcdef' } }
     );
     assert.strictEqual(result.lastSequenceNumber, initialLastSequenceNumber + 2);
     assert.strictEqual(result.items.length, 1);
     assert.strictEqual(result.items[0].primaryKey, person1.id);
 
-    yield person1.delete();
-    yield person2.delete();
-    yield backendRepository.history.forgetDeletedItems();
+    await person1.delete();
+    await person2.delete();
+    await backendRepository.history.forgetDeletedItems();
   });
 
-  test('initialize synchronizer', function *() {
-    yield synchronizer.initializeSynchronizer();
-    let remoteRepositoryId = yield synchronizer.getRemoteRepositoryId();
+  test('initialize synchronizer', async function() {
+    await synchronizer.initializeSynchronizer();
+    let remoteRepositoryId = await synchronizer.getRemoteRepositoryId();
     assert.ok(remoteRepositoryId);
-    let repositoryId = yield frontentRemoteRepository.getRepositoryId();
+    let repositoryId = await frontentRemoteRepository.getRepositoryId();
     assert.strictEqual(repositoryId, remoteRepositoryId);
-    let sequenceNumber = yield synchronizer.getRemoteHistoryLastSequenceNumber();
+    let sequenceNumber = await synchronizer.getRemoteHistoryLastSequenceNumber();
     assert.strictEqual(sequenceNumber, 0);
   });
 
-  test('synchronize remote changes', function *() {
-    let stats = yield synchronizer.run();
+  test('synchronize remote changes', async function() {
+    let stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
@@ -279,63 +282,63 @@ suite('KindaRepositorySynchronizer', function() {
       firstName: 'Manuel',
       lastName: 'Vila'
     });
-    yield backendPerson.save();
+    await backendPerson.save();
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 1);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    let frontendPerson = yield frontendPeople.getItem(backendPerson.id);
+    let frontendPerson = await frontendPeople.getItem(backendPerson.id);
     assert.strictEqual(frontendPerson.firstName, 'Manuel');
 
     backendPerson.firstName = 'Manu';
-    yield backendPerson.save();
+    await backendPerson.save();
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 1);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    yield frontendPerson.load();
+    await frontendPerson.load();
     assert.strictEqual(frontendPerson.firstName, 'Manu');
 
-    yield backendPerson.delete();
+    await backendPerson.delete();
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 1);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    frontendPerson = yield frontendPeople.getItem(
+    frontendPerson = await frontendPeople.getItem(
       frontendPerson.id, { errorIfMissing: false }
     );
     assert.isUndefined(frontendPerson);
   });
 
-  test('synchronize local changes', function *() {
-    let stats = yield synchronizer.run();
+  test('synchronize local changes', async function() {
+    let stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
@@ -346,63 +349,63 @@ suite('KindaRepositorySynchronizer', function() {
       firstName: 'Manuel',
       lastName: 'Vila'
     });
-    yield frontendPerson.save();
+    await frontendPerson.save();
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 1);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    let backendPerson = yield backendPeople.getItem(frontendPerson.id);
+    let backendPerson = await backendPeople.getItem(frontendPerson.id);
     assert.strictEqual(backendPerson.firstName, 'Manuel');
 
     frontendPerson.firstName = 'Manu';
-    yield frontendPerson.save();
+    await frontendPerson.save();
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 1);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    yield backendPerson.load();
+    await backendPerson.load();
     assert.strictEqual(backendPerson.firstName, 'Manu');
 
-    yield frontendPerson.delete();
+    await frontendPerson.delete();
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 1);
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    backendPerson = yield backendPeople.getItem(
+    backendPerson = await backendPeople.getItem(
       backendPerson.id, { errorIfMissing: false }
     );
     assert.isUndefined(backendPerson);
   });
 
-  test('synchronize conflictual changes', function *() {
-    let stats = yield synchronizer.run();
+  test('synchronize conflictual changes', async function() {
+    let stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
@@ -413,67 +416,67 @@ suite('KindaRepositorySynchronizer', function() {
       firstName: 'Manuel',
       lastName: 'Vila'
     });
-    yield backendPerson.save();
+    await backendPerson.save();
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
 
-    let frontendPerson = yield frontendPeople.getItem(backendPerson.id);
+    let frontendPerson = await frontendPeople.getItem(backendPerson.id);
     assert.strictEqual(frontendPerson.firstName, 'Manuel');
 
     backendPerson.firstName = 'Manu';
-    yield backendPerson.save();
+    await backendPerson.save();
 
     frontendPerson.firstName = 'Manuelo';
-    yield frontendPerson.save();
+    await frontendPerson.save();
 
-    yield frontendPerson.load();
+    await frontendPerson.load();
     assert.strictEqual(frontendPerson.firstName, 'Manuelo');
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 1);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    yield frontendPerson.load();
+    await frontendPerson.load();
     assert.strictEqual(frontendPerson.firstName, 'Manu'); // backend always wins
 
     backendPerson.firstName = 'Manueli';
-    yield backendPerson.save();
+    await backendPerson.save();
 
-    yield frontendPerson.delete();
+    await frontendPerson.delete();
 
-    frontendPerson = yield frontendPeople.getItem(
+    frontendPerson = await frontendPeople.getItem(
       frontendPerson.id, { errorIfMissing: false }
     );
     assert.isUndefined(frontendPerson);
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 1);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
     assert.strictEqual(stats.deletedRemoteItemsCount, 0);
 
-    frontendPerson = yield frontendPeople.getItem(backendPerson.id);
+    frontendPerson = await frontendPeople.getItem(backendPerson.id);
     assert.strictEqual(frontendPerson.firstName, 'Manueli');
 
-    yield backendPerson.delete();
+    await backendPerson.delete();
 
-    yield frontendPerson.delete();
+    await frontendPerson.delete();
 
-    stats = yield synchronizer.run();
+    stats = await synchronizer.run();
     assert.strictEqual(stats.updatedLocalItemsCount, 0);
     assert.strictEqual(stats.deletedLocalItemsCount, 0);
     assert.strictEqual(stats.updatedRemoteItemsCount, 0);
