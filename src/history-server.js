@@ -26,14 +26,14 @@ let HistoryServer = KindaObject.extend('HistoryServer', function() {
 
     // TODO: don't monkey patch
     repositoryServer.handleGetHistoryLastSequenceNumberRequest = async function(ctx) {
-      await this.authorizeRequest(ctx, 'getHistoryLastSequenceNumber');
+      await this.verifyAuthorizationAndAuthorize(ctx, 'getHistoryLastSequenceNumber');
       let result = await this.repository.history.getLastSequenceNumber();
       ctx.body = result;
     };
 
     // TODO: don't monkey patch
     repositoryServer.handleFindHistoryItemsAfterSequenceNumberRequest = async function(ctx) {
-      await this.authorizeRequest(ctx, 'findHistoryItemsAfterSequenceNumber');
+      await this.verifyAuthorizationAndAuthorize(ctx, 'findHistoryItemsAfterSequenceNumber');
       let sequenceNumber = ctx.options.startAfter || 0;
       let options = _.omit(ctx.options, ['order', 'startAfter']);
       let result = await this.repository.history.findItemsAfterSequenceNumber(sequenceNumber, options);
