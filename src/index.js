@@ -161,7 +161,7 @@ let KindaRepositorySynchronizer = KindaObject.extend('KindaRepositorySynchronize
             this.log.error(err);
           }
           if (!this._isStopping) {
-            this._timeout = util.createTimeout(30 * 1000); // 30 seconds
+            this._timeout = util.createTimeout(60 * 1000); // 1 minute
             await this._timeout.start();
             this._timeout = undefined;
           }
