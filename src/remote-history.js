@@ -21,7 +21,7 @@ let RemoteHistory = KindaObject.extend('RemoteHistory', function() {
     options.order = ['sequenceNumber'];
     options.startAfter = sequenceNumber;
     let url = this.repository.makeURL('history-items', undefined, undefined, options);
-    let params = { method: 'GET', url, json: true };
+    let params = { method: 'GET', url, json: true, timeout: 60000 };
     this.repository.writeAuthorization(params);
     let res = await this.repository.httpClient.request(params);
     if (res.statusCode !== 200) throw this.repository.createError(res);
