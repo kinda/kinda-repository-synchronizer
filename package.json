@@ -20,8 +20,8 @@
   "author": "Manuel Vila <mvila@3base.com>",
   "license": "MIT",
   "dependencies": {
-    "kinda-connectivity": "^0.2.0",
-    "kinda-event-manager": "^0.2.0",
+    "kinda-connectivity": "^0.2.9",
+    "kinda-event-manager": "^0.2.1",
     "kinda-log": "^0.2.0",
     "kinda-object": "^0.3.0",
     "kinda-util": "^0.2.0",
@@ -29,9 +29,9 @@
   },
   "devDependencies": {
     "babel": "^5.4.7",
-    "babel-eslint": "^4.0.5",
+    "babel-eslint": "^4.1.8",
     "chai": "^2.3.0",
-    "eslint": "^1.0.0",
+    "eslint": "^1.10.3",
     "eslint-config-kinda": "^0.2.0",
     "kinda-collection": "^0.6.0",
     "kinda-local-repository": "^0.5.0",
