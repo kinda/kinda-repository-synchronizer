@@ -136,7 +136,7 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
         prefix: this.sequenceNumberIndexPrefix,
         startAfter: sequenceNumber,
         end: lastSequenceNumber,
-        limit: 100000 // TODO: implement forEach in the store and use it here
+        limit: 500000 // TODO: implement forEach in the store and use it here
       });
       let filter = options.filter;
       if (filter && !_.isArray(filter)) filter = [filter];
@@ -174,7 +174,7 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
     let results = await store.getRange({
       prefix: this.sequenceNumberIndexPrefix,
       end: sequenceNumber,
-      limit: 100000 // TODO: make it work for an unlimited number of items
+      limit: 500000 // TODO: make it work for an unlimited number of items
     });
     let primaryKeyIndexKeys = results.map(result => {
       return this.makePrimaryKeyIndexKey(result.value.primaryKey);
@@ -214,7 +214,7 @@ let LocalHistory = KindaObject.extend('LocalHistory', function() {
     let store = this.repository.store;
     let results = await store.getRange({
       prefix: this.sequenceNumberIndexPrefix,
-      limit: 100000 // TODO: implement forEach in the store and use it here
+      limit: 500000 // TODO: implement forEach in the store and use it here
     });
     for (let result of results) {
       if (result.value.isDeleted) {

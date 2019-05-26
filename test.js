@@ -13,7 +13,7 @@ let LocalHistory = KindaRepositorySynchronizer.LocalHistory;
 let RemoteHistory = KindaRepositorySynchronizer.RemoteHistory;
 let HistoryServer = KindaRepositorySynchronizer.HistoryServer;
 
-suite('KindaRepositorySynchronizer', function() {
+suite.skip('KindaRepositorySynchronizer', function() {
   let frontentLocalRepository, frontentRemoteRepository, backendRepository;
   let frontendPeople, backendPeople;
   let synchronizer, httpServer;
