@@ -25,7 +25,7 @@
     "kinda-log": "^0.2.0",
     "kinda-object": "^0.3.0",
     "kinda-util": "^0.2.0",
-    "lodash": "^3.9.1"
+    "lodash": "^4.17.15"
   },
   "devDependencies": {
     "babel": "^5.4.7",
